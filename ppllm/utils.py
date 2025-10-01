@@ -7,7 +7,7 @@ def load_texts(path: Path, input_key: str = "text", split: str = "test"):
     # TODO from txt
     dataset = load_dataset(path)
     subset = get_split(dataset, split)
-    return subset[input_key]
+    return list(subset[input_key])
 
 
 def load_dataset(data_path):
