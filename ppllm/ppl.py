@@ -2,7 +2,7 @@ from jsonargparse import CLI
 import json
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Optional, Any, Dict, Union
+from typing import Optional, Union
 from jsonargparse import CLI
 import os
 import warnings
@@ -60,24 +60,39 @@ class TokenizerKwargs:
 
 
 @torch.no_grad()
-def compute_nll(loader, model, tokenizer, tokenizer_kwargs):
+def compute_nll(loader, model, tokenizer, tokenizer_kwargs, window: int = None):
+    stride = window // 2
     loss_fct = nn.CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
     total_losses, total_chars, total_tokens = [], [], []
     all_losses, all_indices = [], []
     i = 0
     for batch in tqdm(loader, total=len(loader.dataset)//loader.batch_size):
         inputs = tokenizer(batch, **tokenizer_kwargs)
+        batch_size, seq_len = inputs["input_ids"].shape
         for k, v in inputs.items():
             inputs[k] = v.to(model.device)
-        logits = model(**inputs, return_dict=True).logits
-        batch_size, seq_len = inputs["input_ids"].shape
-        labels = inputs['input_ids']        
-        logits = logits[:, :-1].contiguous().view(-1, model.config.vocab_size)
-        labels = labels[:, 1:].contiguous().view(-1)
-        losses = loss_fct(logits, labels).view(batch_size, seq_len-1)
-        total_losses.append(losses.sum(1).cpu())
-        all_losses.append(losses.reshape(-1).cpu())
-        all_indices.append(torch.arange(i, i+len(batch)).repeat_interleave(seq_len-1))
+        if window is None:
+            logits = model(**inputs, return_dict=True).logits
+            labels = inputs['input_ids']        
+            logits = logits[:, :-1].contiguous().view(-1, model.config.vocab_size)
+            labels = labels[:, 1:].contiguous().view(-1)
+            losses = loss_fct(logits, labels).view(batch_size, seq_len-1)
+            total_losses.append(losses.sum(1).cpu())
+            all_losses.append(losses.reshape(-1).cpu())
+            all_indices.append(torch.arange(i, i+batch_size).repeat_interleave(seq_len-1))
+        else:
+            for j in range(0, seq_len-stride, stride):
+                input_ids = inputs["input_ids"][:, j: j+window]
+                logits = model(input_ids, return_dict=True).logits
+                logits = logits[:, :-1].contiguous().view(-1, model.config.vocab_size)
+                labels = input_ids.clone()
+                if j > 0:
+                    labels[:, :-stride] = loss_fct.ignore_index
+                labels = labels[:, 1:].contiguous().view(-1)
+                losses = loss_fct(logits, labels).view(batch_size, window-1)
+                total_losses.append(losses.sum(1).cpu())
+                all_losses.append(losses.reshape(-1).cpu())
+                all_indices.append(torch.arange(i, i+batch_size).repeat_interleave(window-1))
         i += len(batch)
         tokenized_texts = tokenizer(batch, add_special_tokens=False)
         # FIXME: if there's no BOS, we should not count the first token
@@ -97,7 +112,7 @@ def compute_nll(loader, model, tokenizer, tokenizer_kwargs):
     return outputs
 
 
-def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, input_key: str = "text", split: str = "test",
+def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: int = None, input_key: str = "text", split: str = "test",
          tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), loader_kwargs: LoaderKwargs = LoaderKwargs()):
     output_dir.mkdir(exist_ok=True, parents=True)
     tokenizer = AutoTokenizer.from_pretrained(
@@ -112,7 +127,7 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, input_key
     model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs)).cuda()
     texts = load_texts(data_path, input_key=input_key, split=split)
     loader = DataLoader(texts, **asdict(loader_kwargs), shuffle=False, collate_fn=None)
-    outputs = compute_nll(loader, model, tokenizer, asdict(tokenizer_kwargs))
+    outputs = compute_nll(loader, model, tokenizer, asdict(tokenizer_kwargs), window=window)
     # surprisal is expressed in bits
     total_surprisal = outputs["total_losses"].sum()/torch.log(torch.tensor(2))
     metrics = {
