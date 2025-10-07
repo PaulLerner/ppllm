@@ -75,6 +75,7 @@ def compute_nll(loader, model, tokenizer, tokenizer_kwargs):
         losses = loss_fct(logits, labels).view(batch_size, seq_len-1)
         total_losses.append(losses.sum(1))
         tokenized_texts = tokenizer(batch, add_special_tokens=False)
+        # FIXME: if there's no BOS, we should not count the first token
         for text, tokens in zip(batch, tokenized_texts["input_ids"]):
             total_chars.append(len(text))
             total_tokens.append(len(tokens))

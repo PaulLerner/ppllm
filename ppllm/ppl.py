@@ -56,8 +56,9 @@ def main(output_dir: Path, data_path: Path, llm_arguments: LlmArguments, input_k
                 assert logps[0].logprob <= logps[1].logprob
             total_logp += logps[0].logprob
         total_logps.append(total_logp)
-        total_chars.append(len(text))
         total_tokens.append(len(output.prompt_logprobs[1:]))
+        # FIXME: if there's no BOS, we should not count the first token
+        total_chars.append(len(text))
     total_logps, total_chars, total_tokens = np.array(total_logps), np.array(total_chars), np.array(total_tokens)
     
     # surprisal is expressed in bits
