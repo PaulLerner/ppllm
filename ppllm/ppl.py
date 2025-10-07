@@ -63,6 +63,8 @@ class TokenizerKwargs:
 def compute_nll(loader, model, tokenizer, tokenizer_kwargs):
     loss_fct = nn.CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
     total_losses, total_chars, total_tokens = [], [], []
+    all_losses, all_indices = [], []
+    i = 0
     for batch in tqdm(loader, total=len(loader.dataset)//loader.batch_size):
         inputs = tokenizer(batch, **tokenizer_kwargs)
         for k, v in inputs.items():
@@ -74,14 +76,25 @@ def compute_nll(loader, model, tokenizer, tokenizer_kwargs):
         labels = labels[:, 1:].contiguous().view(-1)
         losses = loss_fct(logits, labels).view(batch_size, seq_len-1)
         total_losses.append(losses.sum(1))
+        all_losses.append(losses.reshape(-1))
+        all_indices.append(torch.arange(i, i+len(batch)).repeat_interleave(seq_len-1))
+        i += len(batch)
         tokenized_texts = tokenizer(batch, add_special_tokens=False)
         # FIXME: if there's no BOS, we should not count the first token
         for text, tokens in zip(batch, tokenized_texts["input_ids"]):
             total_chars.append(len(text))
             total_tokens.append(len(tokens))
     total_losses = torch.cat(total_losses).to(torch.float32)
+    all_losses, all_indices = torch.cat(all_losses), torch.cat(all_indices)
     total_chars, total_tokens = torch.tensor(total_chars), torch.tensor(total_tokens)
-    return total_losses, total_chars, total_tokens
+    outputs = dict(
+        total_losses=total_losses, 
+        total_chars=total_chars, 
+        total_tokens=total_tokens, 
+        all_losses=all_losses, 
+        all_indices=all_indices
+    )
+    return outputs
 
 
 def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, input_key: str = "text", split: str = "test",
@@ -99,20 +112,20 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, input_key
     model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs)).cuda()
     texts = load_texts(data_path, input_key=input_key, split=split)
     loader = DataLoader(texts, **asdict(loader_kwargs), shuffle=False, collate_fn=None)
-    total_losses, total_chars, total_tokens = compute_nll(loader, model, tokenizer, asdict(tokenizer_kwargs))
+    outputs = compute_nll(loader, model, tokenizer, asdict(tokenizer_kwargs))
     # surprisal is expressed in bits
-    total_surprisal = total_losses.sum()/torch.log(torch.tensor(2))
+    total_surprisal = outputs["total_losses"].sum()/torch.log(torch.tensor(2))
     metrics = {
-        "ppl": 2**(total_surprisal/total_tokens.sum()).item(),
-        "bpc": (total_surprisal/total_chars.sum()).item(),
+        "ppl": 2**(total_surprisal/outputs["total_tokens"].sum()).item(),
+        "bpc": (total_surprisal/outputs["total_chars"].sum()).item(),
         "surprisal": total_surprisal.item()
     }
 
     print(metrics)
     with open(output_dir/"metrics.json", "wt") as file:
         json.dump(metrics, file)
-    for name, array in zip(["nll", "char", "tokens"], [total_losses, total_chars, total_tokens]):
-        torch.save(array, output_dir/f"{name}.bin")
+    for k, v in outputs.items():
+        torch.save(v, output_dir/f"{k}.bin")
 
 
 def cli():
