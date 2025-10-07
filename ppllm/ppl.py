@@ -84,12 +84,14 @@ def compute_nll(loader, model, tokenizer, tokenizer_kwargs, window: int = None):
             for j in range(0, seq_len-stride, stride):
                 input_ids = inputs["input_ids"][:, j: j+window]
                 logits = model(input_ids, return_dict=True).logits
-                logits = logits[:, :-1].contiguous().view(-1, model.config.vocab_size)
-                labels = input_ids.clone()
                 if j > 0:
-                    labels[:, :-stride] = loss_fct.ignore_index
-                labels = labels[:, 1:].contiguous().view(-1)
-                losses = loss_fct(logits, labels).view(batch_size, window-1)
+                    logits = logits[:, stride:-1].contiguous().view(-1, model.config.vocab_size)
+                    labels = input_ids[:, stride+1:].contiguous().view(-1)
+                    losses = loss_fct(logits, labels).view(batch_size, stride-1)
+                else:
+                    logits = logits[:, :-1].contiguous().view(-1, model.config.vocab_size)
+                    labels = input_ids[:, 1:].contiguous().view(-1)
+                    losses = loss_fct(logits, labels).view(batch_size, window-1)
                 total_losses.append(losses.sum(1).cpu())
                 all_losses.append(losses.reshape(-1).cpu())
                 all_indices.append(torch.arange(i, i+batch_size).repeat_interleave(window-1))
