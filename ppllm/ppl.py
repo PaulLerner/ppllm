@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from .utils import load_texts
+from .utils import load_texts, unsort
 
 
 @dataclass
@@ -60,7 +60,7 @@ class TokenizerKwargs:
 
 
 @torch.no_grad()
-def compute_nll(loader, model, tokenizer, tokenizer_kwargs, window: int = None):
+def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int = None):
     stride = window // 2
     loss_fct = nn.CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
     total_losses, total_chars, total_tokens = [], [], []
@@ -79,7 +79,7 @@ def compute_nll(loader, model, tokenizer, tokenizer_kwargs, window: int = None):
             losses = loss_fct(logits, labels).view(batch_size, seq_len-1)
             total_losses.append(losses.sum(1).cpu())
             all_losses.append(losses.reshape(-1).cpu())
-            all_indices.append(torch.arange(i, i+batch_size).repeat_interleave(seq_len-1))
+            all_indices.append(indices[i: i+batch_size].repeat_interleave(seq_len-1))
         else:
             for j in range(0, seq_len-stride, stride):
                 input_ids = inputs["input_ids"][:, j: j+window]
@@ -94,16 +94,16 @@ def compute_nll(loader, model, tokenizer, tokenizer_kwargs, window: int = None):
                     losses = loss_fct(logits, labels).view(batch_size, window-1)
                 total_losses.append(losses.sum(1).cpu())
                 all_losses.append(losses.reshape(-1).cpu())
-                all_indices.append(torch.arange(i, i+batch_size).repeat_interleave(window-1))
+                all_indices.append(indices[i: i+batch_size].repeat_interleave(window-1))
         i += len(batch)
         tokenized_texts = tokenizer(batch, add_special_tokens=False)
         # FIXME: if there's no BOS, we should not count the first token
         for text, tokens in zip(batch, tokenized_texts["input_ids"]):
             total_chars.append(len(text))
             total_tokens.append(len(tokens))
-    total_losses = torch.cat(total_losses).to(torch.float32)
     all_losses, all_indices = torch.cat(all_losses), torch.cat(all_indices)
-    total_chars, total_tokens = torch.tensor(total_chars), torch.tensor(total_tokens)
+    total_losses = unsort(torch.cat(total_losses).to(torch.float32), indices)
+    total_chars, total_tokens = unsort(torch.tensor(total_chars), indices), unsort(torch.tensor(total_tokens), indices)
     outputs = dict(
         total_losses=total_losses, 
         total_chars=total_chars, 
@@ -128,8 +128,9 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
         tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs)).cuda()
     texts = load_texts(data_path, input_key=input_key, split=split)
-    loader = DataLoader(texts, **asdict(loader_kwargs), shuffle=False, collate_fn=None)
-    outputs = compute_nll(loader, model, tokenizer, asdict(tokenizer_kwargs), window=window)
+    indices = torch.tensor([len(text) for text in texts]).argsort(descending=True)
+    loader = DataLoader([texts[i] for i in indices], **asdict(loader_kwargs), shuffle=False, collate_fn=None)
+    outputs = compute_nll(loader, indices, model, tokenizer, asdict(tokenizer_kwargs), window=window)
     # surprisal is expressed in bits
     total_surprisal = outputs["total_losses"].sum()/torch.log(torch.tensor(2))
     metrics = {

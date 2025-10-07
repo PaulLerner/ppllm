@@ -1,6 +1,13 @@
 from pathlib import Path
 import pandas as pd
 from datasets import load_from_disk
+import torch
+
+
+def unsort(sorted_values, indices):
+    unsorted = torch.empty_like(sorted_values)
+    unsorted[indices] = sorted_values
+    return unsorted
 
 
 def load_texts(path: Path, input_key: str = "text", split: str = "test"):
