@@ -88,14 +88,13 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
                 if j > 0:
                     logits = logits[:, stride:-1].contiguous().view(-1, model.config.vocab_size)
                     labels = input_ids[:, stride+1:].contiguous().view(-1)
-                    losses = loss_fct(logits, labels).view(batch_size, stride-1)
                 else:
                     logits = logits[:, :-1].contiguous().view(-1, model.config.vocab_size)
                     labels = input_ids[:, 1:].contiguous().view(-1)
-                    losses = loss_fct(logits, labels).view(batch_size, window-1)
+                losses = loss_fct(logits, labels).view(batch_size, -1)
+                all_indices.append(indices[i: i+batch_size].repeat_interleave(losses.shape[1]))
                 total_losses.append(losses.sum(1).cpu())
                 all_losses.append(losses.reshape(-1).cpu())
-                all_indices.append(indices[i: i+batch_size].repeat_interleave(window-1))
         i += len(batch)
         tokenized_texts = tokenizer(batch, add_special_tokens=False)
         # FIXME: if there's no BOS, we should not count the first token
@@ -124,6 +123,7 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
         add_eos_token=False, 
         trust_remote_code=model_kwargs.trust_remote_code
     )
+    # FIXME: in this case the surprisal of EOS will not be computed
     if tokenizer.pad_token is None:
         warnings.warn(f"{tokenizer.pad_token=}, setting to {tokenizer.eos_token=}")
         tokenizer.pad_token = tokenizer.eos_token
