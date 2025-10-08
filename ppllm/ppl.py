@@ -61,7 +61,8 @@ class TokenizerKwargs:
 
 @torch.no_grad()
 def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int = None):
-    stride = window // 2
+    if window is not None:
+        stride = window // 2
     loss_fct = nn.CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
     total_losses, total_chars, total_tokens = [], [], []
     all_losses, all_indices = [], []
