@@ -19,6 +19,7 @@ from .utils import load_texts, unsort
 
 @dataclass
 class ModelKwargs:
+    """Arguments for HF's model"""
     pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None
     #device_map: str = "auto"
     config: Optional[Union[str, os.PathLike]] = None
@@ -34,12 +35,13 @@ class ModelKwargs:
     dtype: str = "float16"
     load_in_8bit: bool = False
     load_in_4bit: bool = False
-   # use_flash_attention_2: bool = False
+    attn_implementation: str = None
     trust_remote_code: bool = True
 
 
 @dataclass
 class LoaderKwargs:
+    """Arguments for torch's DataLoader"""
     batch_size: Optional[int] = 64
     num_workers: int = 4
     pin_memory: bool = False
@@ -52,6 +54,7 @@ class LoaderKwargs:
 
 @dataclass
 class TokenizerKwargs:
+    """Arguments for HF's tokenizer"""
     return_tensors: str = 'pt'
     padding: Union[bool, str] = 'longest'
     truncation: bool = False
@@ -82,7 +85,9 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
             all_losses.append(losses.reshape(-1).cpu())
             all_indices.append(indices[i: i+batch_size].repeat_interleave(seq_len-1))
         else:
-            for j in range(0, seq_len-stride, stride):
+            window_losses = []
+            # adapted from https://huggingface.co/docs/transformers/perplexity
+            for j in range(0, seq_len, stride):
                 input_ids = inputs["input_ids"][:, j: j+window]
                 logits = model(input_ids, return_dict=True).logits
                 if j > 0:
@@ -93,8 +98,12 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
                     labels = input_ids[:, 1:].contiguous().view(-1)
                 losses = loss_fct(logits, labels).view(batch_size, -1)
                 all_indices.append(indices[i: i+batch_size].repeat_interleave(losses.shape[1]))
-                total_losses.append(losses.sum(1).cpu())
                 all_losses.append(losses.reshape(-1).cpu())
+                window_losses.append(losses.sum(1))
+                # cannot use `seq_len-stride` in the range loop if `seq_len < stride`
+                if j+window >= seq_len:
+                    break
+            total_losses.append(torch.stack(window_losses).sum(0).cpu())
         i += len(batch)
         tokenized_texts = tokenizer(batch, add_special_tokens=False)
         # FIXME: if there's no BOS, we should not count the first token
@@ -116,6 +125,7 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
 
 def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: int = None, input_key: str = "text", split: str = "test",
          tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), loader_kwargs: LoaderKwargs = LoaderKwargs()):
+    """Compute the PPL and Surprisal of an LLM"""
     output_dir.mkdir(exist_ok=True, parents=True)
     tokenizer = AutoTokenizer.from_pretrained(
         model_kwargs.pretrained_model_name_or_path, 
@@ -148,4 +158,4 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
 
 
 def cli():
-    CLI(main)
+    CLI(main, description=main.__doc__)
