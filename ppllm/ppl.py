@@ -89,7 +89,6 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
             # adapted from https://huggingface.co/docs/transformers/perplexity
             for j in range(0, max(seq_len-stride, stride), stride):
                 window_ids = input_ids[:, j: j+window]
-                # FIXME padding
                 logits = model(window_ids, return_dict=True).logits
                 if j > 0:
                     logits = logits[:, stride:-1].contiguous().view(-1, model.config.vocab_size)

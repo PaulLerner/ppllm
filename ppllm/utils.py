@@ -24,7 +24,7 @@ def find_batch_size(texts, model, tokenizer, tokenizer_kwargs, device, window: i
     while True:
         input_ids = tokenizer(texts[:batch_size], **tokenizer_kwargs)["input_ids"].to(device)
         if window is not None:
-            input_ids = input_ids[:, window]
+            input_ids = input_ids[:, :window]
         try:
             _ = model(input_ids, return_dict=True).logits
         except Exception as e:
