@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from .utils import load_texts, unsort
+from .utils import load_texts, unsort, get_device, find_batch_size
 
 
 @dataclass
@@ -42,7 +42,7 @@ class ModelKwargs:
 @dataclass
 class LoaderKwargs:
     """Arguments for torch's DataLoader"""
-    batch_size: Optional[int] = 64
+    batch_size: Optional[int] = None
     num_workers: int = 4
     pin_memory: bool = False
     drop_last: bool = False
@@ -63,7 +63,9 @@ class TokenizerKwargs:
 
 
 @torch.no_grad()
-def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int = None):
+def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int = None, device: str = None):
+    if device is None:
+        device = model.device
     if window is not None:
         stride = window // 2
     loss_fct = nn.CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
@@ -71,13 +73,11 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
     all_losses, all_indices = [], []
     i = 0
     for batch in tqdm(loader, total=len(loader.dataset)//loader.batch_size):
-        inputs = tokenizer(batch, **tokenizer_kwargs)
-        batch_size, seq_len = inputs["input_ids"].shape
-        for k, v in inputs.items():
-            inputs[k] = v.to(model.device)
+        input_ids = tokenizer(batch, **tokenizer_kwargs)["input_ids"].to(device)
+        batch_size, seq_len = input_ids.shape
         if window is None:
-            logits = model(**inputs, return_dict=True).logits
-            labels = inputs['input_ids']        
+            logits = model(input_ids, return_dict=True).logits
+            labels = input_ids     
             logits = logits[:, :-1].contiguous().view(-1, model.config.vocab_size)
             labels = labels[:, 1:].contiguous().view(-1)
             losses = loss_fct(logits, labels).view(batch_size, seq_len-1)
@@ -88,15 +88,15 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
             window_losses = []
             # adapted from https://huggingface.co/docs/transformers/perplexity
             for j in range(0, max(seq_len-stride, stride), stride):
-                input_ids = inputs["input_ids"][:, j: j+window]
+                window_ids = input_ids[:, j: j+window]
                 # FIXME padding
-                logits = model(input_ids, return_dict=True).logits
+                logits = model(window_ids, return_dict=True).logits
                 if j > 0:
                     logits = logits[:, stride:-1].contiguous().view(-1, model.config.vocab_size)
-                    labels = input_ids[:, stride+1:].contiguous().view(-1)
+                    labels = window_ids[:, stride+1:].contiguous().view(-1)
                 else:
                     logits = logits[:, :-1].contiguous().view(-1, model.config.vocab_size)
-                    labels = input_ids[:, 1:].contiguous().view(-1)
+                    labels = window_ids[:, 1:].contiguous().view(-1)
                 losses = loss_fct(logits, labels).view(batch_size, -1)
                 all_indices.append(indices[i: i+batch_size].repeat_interleave(losses.shape[1]))
                 all_losses.append(losses.reshape(-1).cpu())
@@ -154,6 +154,7 @@ def count_tokens_chars(texts, tokenizer):
 def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: int = None, input_key: str = "text", split: str = "test",
          tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), loader_kwargs: LoaderKwargs = LoaderKwargs()):
     """Compute the PPL and Surprisal of an LLM"""
+    tokenizer_kwargs = asdict(tokenizer_kwargs)
     assert window is None or window%2 == 0, f"window must be dividible by 2, got {window}"
     output_dir.mkdir(exist_ok=True, parents=True)
     tokenizer = AutoTokenizer.from_pretrained(
@@ -163,19 +164,24 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
         add_eos_token=False, 
         trust_remote_code=model_kwargs.trust_remote_code
     )
+    # ensure right padding so we don't need attention mask
+    if tokenizer.padding_side != "right":
+        tokenizer.padding_side = "right"
     # FIXME: in this case the surprisal of EOS will not be computed
     if tokenizer.pad_token is None:
-        warnings.warn(f"{tokenizer.pad_token=}, setting to {tokenizer.eos_token=}")
         tokenizer.pad_token = tokenizer.eos_token
-    # FIXME padding side
-    model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs)).cuda()
+    device = get_device()
+    model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs)).to(device)
     texts = load_texts(data_path, input_key=input_key, split=split)
     total_chars, total_tokens = count_tokens_chars(texts, tokenizer)
     indices = total_tokens.argsort(descending=True)
-    loader = DataLoader([texts[i] for i in indices], **asdict(loader_kwargs), shuffle=False, collate_fn=None)
-    outputs = compute_nll(loader, indices, model, tokenizer, asdict(tokenizer_kwargs), window=window)
+    sorted_texts = [texts[i] for i in indices]
+    if loader_kwargs.batch_size is None:
+        loader_kwargs.batch_size = find_batch_size(sorted_texts, model, tokenizer, tokenizer_kwargs, device, window=window)
+    loader = DataLoader(sorted_texts, **asdict(loader_kwargs), shuffle=False, collate_fn=None)
+    outputs = compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window=window, device=device)
     outputs.update(dict(total_chars=total_chars, total_tokens=total_tokens))
-    metrics = compute_metrics(**{outputs[k] for k in ["total_losses", "total_chars", "total_tokens"]})
+    metrics = compute_metrics(**{k: outputs[k] for k in ["total_losses", "total_chars", "total_tokens"]})
 
     print(metrics)
     with open(output_dir/"metrics.json", "wt") as file:

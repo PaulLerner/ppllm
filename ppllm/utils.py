@@ -4,6 +4,40 @@ from datasets import load_from_disk
 import torch
 
 
+def get_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+@torch.no_grad()
+def find_batch_size(texts, model, tokenizer, tokenizer_kwargs, device, window: int = None):
+    if device == "mps":
+        raise NotImplementedError(f"{device} not implemented yet")
+    elif device != "cuda":
+        raise ValueError(f"{device} not supported")
+    
+    batch_size = 1
+    ok_batch_size = None
+    while True:
+        input_ids = tokenizer(texts[:batch_size], **tokenizer_kwargs)["input_ids"].to(device)
+        if window is not None:
+            input_ids = input_ids[:, window]
+        try:
+            _ = model(input_ids, return_dict=True).logits
+        except Exception as e:
+            if ok_batch_size is None:
+                raise ValueError(f"Got Exception {e=} (likely OOM) with {batch_size=}, try using a smaller {window=}")
+            else:
+                print(f"Found {ok_batch_size=}")
+                return ok_batch_size
+        else:
+            ok_batch_size = batch_size
+            batch_size *= 2
+
+
 def unsort(sorted_values, indices):
     unsorted = torch.empty_like(sorted_values)
     unsorted[indices] = sorted_values
