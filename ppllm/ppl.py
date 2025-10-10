@@ -67,7 +67,7 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
     if window is not None:
         stride = window // 2
     loss_fct = nn.CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
-    total_losses, total_chars, total_tokens = [], [], []
+    total_losses = []
     all_losses, all_indices = [], []
     i = 0
     for batch in tqdm(loader, total=len(loader.dataset)//loader.batch_size):
@@ -89,6 +89,7 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
             # adapted from https://huggingface.co/docs/transformers/perplexity
             for j in range(0, max(seq_len-stride, stride), stride):
                 input_ids = inputs["input_ids"][:, j: j+window]
+                # FIXME padding
                 logits = model(input_ids, return_dict=True).logits
                 if j > 0:
                     logits = logits[:, stride:-1].contiguous().view(-1, model.config.vocab_size)
@@ -102,31 +103,63 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
                 window_losses.append(losses.sum(1))
             total_losses.append(torch.stack(window_losses).sum(0).cpu())
         i += len(batch)
-        tokenized_texts = tokenizer(batch, add_special_tokens=False)
-        # FIXME: if there's no BOS, we should not count the first token
-        for text, tokens in zip(batch, tokenized_texts["input_ids"]):
-            total_chars.append(len(text))
-            total_tokens.append(len(tokens))
     all_losses, all_indices = torch.cat(all_losses), torch.cat(all_indices)
     total_losses = unsort(torch.cat(total_losses).to(torch.float32), indices)
-    total_chars, total_tokens = unsort(torch.tensor(total_chars), indices), unsort(torch.tensor(total_tokens), indices)
     outputs = dict(
         total_losses=total_losses, 
-        total_chars=total_chars, 
-        total_tokens=total_tokens, 
         all_losses=all_losses, 
         all_indices=all_indices
     )
     return outputs
 
 
+def sample_level(total_losses, total_chars, total_tokens):
+    surprisals = total_losses/torch.log(torch.tensor(2))
+    metrics = {
+        "ppls": 2**(surprisals/total_tokens),
+        "bpcs": (surprisals/total_chars),
+        "surprisals": surprisals
+    }
+    return metrics
+
+
+def compute_metrics(total_losses, total_chars, total_tokens):
+    # surprisal is expressed in bits
+    total_surprisal = total_losses.sum()/torch.log(torch.tensor(2))
+    metrics = {
+        "ppl": 2**(total_surprisal/total_tokens.sum()).item(),
+        "bpc": (total_surprisal/total_chars.sum()).item(),
+        "surprisal": total_surprisal.item()
+    }
+    return metrics
+
+
+def count_tokens_chars_discount_bos(texts, tokenizer):
+    # if there's no BOS, we should not count the first token
+    raise NotImplementedError()
+
+
+def count_tokens_chars(texts, tokenizer):
+    total_chars, total_tokens = [], []
+    if tokenizer.bos_token is None:
+        return count_tokens_chars_discount_bos(texts, tokenizer)
+    all_tokens = tokenizer(texts, add_special_tokens=False)
+    for text, tokens in zip(texts, all_tokens["input_ids"]):
+        total_chars.append(len(text))
+        total_tokens.append(len(tokens))
+    total_chars, total_tokens = torch.tensor(total_chars), torch.tensor(total_tokens)
+    return total_chars, total_tokens
+
+
 def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: int = None, input_key: str = "text", split: str = "test",
          tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), loader_kwargs: LoaderKwargs = LoaderKwargs()):
     """Compute the PPL and Surprisal of an LLM"""
+    assert window is None or window%2 == 0, f"window must be dividible by 2, got {window}"
     output_dir.mkdir(exist_ok=True, parents=True)
     tokenizer = AutoTokenizer.from_pretrained(
         model_kwargs.pretrained_model_name_or_path, 
         add_prefix_space=False, 
+        # FIXME option for EOS
         add_eos_token=False, 
         trust_remote_code=model_kwargs.trust_remote_code
     )
@@ -134,18 +167,15 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
     if tokenizer.pad_token is None:
         warnings.warn(f"{tokenizer.pad_token=}, setting to {tokenizer.eos_token=}")
         tokenizer.pad_token = tokenizer.eos_token
+    # FIXME padding side
     model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs)).cuda()
     texts = load_texts(data_path, input_key=input_key, split=split)
-    indices = torch.tensor([len(text) for text in texts]).argsort(descending=True)
+    total_chars, total_tokens = count_tokens_chars(texts, tokenizer)
+    indices = total_tokens.argsort(descending=True)
     loader = DataLoader([texts[i] for i in indices], **asdict(loader_kwargs), shuffle=False, collate_fn=None)
     outputs = compute_nll(loader, indices, model, tokenizer, asdict(tokenizer_kwargs), window=window)
-    # surprisal is expressed in bits
-    total_surprisal = outputs["total_losses"].sum()/torch.log(torch.tensor(2))
-    metrics = {
-        "ppl": 2**(total_surprisal/outputs["total_tokens"].sum()).item(),
-        "bpc": (total_surprisal/outputs["total_chars"].sum()).item(),
-        "surprisal": total_surprisal.item()
-    }
+    outputs.update(dict(total_chars=total_chars, total_tokens=total_tokens))
+    metrics = compute_metrics(**{outputs[k] for k in ["total_losses", "total_chars", "total_tokens"]})
 
     print(metrics)
     with open(output_dir/"metrics.json", "wt") as file:
