@@ -89,9 +89,10 @@ software | throughput in seconds
 -----------|------
 vllm | 328
 hf_shuffle | 364
-transformers sorted v2 b4bf445eb46c2d73439a5046540e6649bd86f368 | 79
-transformers sorted v2 window=128 batch=32 b4bf445eb46c2d73439a5046540e6649bd86f368 | 108
-transformers sorted v2 window=128 batch=128 b4bf445eb46c2d73439a5046540e6649bd86f368 | 121
+transformers sorted  b4bf445eb46c2d73439a5046540e6649bd86f368 | 79
+transformers sorted  window=128 batch=32  | 108
+transformers sorted  window=128 batch=128  | 121
+transformers sorted  window=256 batch=64  | 91
 
 It seems that the sequences are too short to take advantage of windowed PPL and that sorting the text by length is enough 
 (to get rid of the long tail/inefficient padding)
