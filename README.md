@@ -39,6 +39,19 @@ Setup:
 - NVIDIA V100 (32GB)
 - Llama-3.1-8B
 
+### wikitext-2-v1
+
+software | throughput in seconds
+-----------|------
+vllm | 328
+transformers sorted v2 b4bf445eb46c2d73439a5046540e6649bd86f368 | 79
+transformers sorted v2 window=128 b4bf445eb46c2d73439a5046540e6649bd86f368 | 108
+
+It seems that the sequences are too short to take advantage of windowed PPL and that sorting the text by length is enough 
+(to get rid of the long tail/inefficient padding)
+![](docs/wikitext-2-v1_Llama-3.1-8B.png)
+
+
 ### 23k english sentences from EuroParl
 
 software | throughput in seconds
