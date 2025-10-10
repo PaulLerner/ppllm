@@ -87,7 +87,7 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
         else:
             window_losses = []
             # adapted from https://huggingface.co/docs/transformers/perplexity
-            for j in range(0, seq_len, stride):
+            for j in range(0, max(seq_len-stride, stride), stride):
                 input_ids = inputs["input_ids"][:, j: j+window]
                 logits = model(input_ids, return_dict=True).logits
                 if j > 0:
@@ -100,9 +100,6 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
                 all_indices.append(indices[i: i+batch_size].repeat_interleave(losses.shape[1]))
                 all_losses.append(losses.reshape(-1).cpu())
                 window_losses.append(losses.sum(1))
-                # cannot use `seq_len-stride` in the range loop if `seq_len < stride`
-                if j+window >= seq_len:
-                    break
             total_losses.append(torch.stack(window_losses).sum(0).cpu())
         i += len(batch)
         tokenized_texts = tokenizer(batch, add_special_tokens=False)
