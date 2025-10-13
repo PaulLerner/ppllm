@@ -1,6 +1,6 @@
 from pathlib import Path
 import pandas as pd
-from datasets import load_from_disk
+import datasets
 import torch
 
 
@@ -51,11 +51,13 @@ def load_texts(path: Path, input_key: str = "text", split: str = "test"):
     return list(subset[input_key])
 
 
-def load_dataset(data_path):
+def load_dataset(data_path: Path):
     if data_path.suffix == ".csv":
         dataset = pd.read_csv(data_path)
+    elif (data_path/"dataset_info.json").exists() or (data_path/"dataset_dict.json").exists():
+        dataset = datasets.load_from_disk(data_path)
     else:
-        dataset = load_from_disk(data_path)
+        dataset = datasets.load_dataset(data_path)
     return dataset
 
 
