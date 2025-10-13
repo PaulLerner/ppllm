@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Optional, Union
 from jsonargparse import CLI
 import os
-import warnings
 from tqdm import tqdm
+import time
 
 import torch
 from torch import nn
@@ -64,6 +64,7 @@ class TokenizerKwargs:
 
 @torch.no_grad()
 def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int = None, device: str = None):
+    start_time = time.time()
     if device is None:
         device = model.device
     if window is not None:
@@ -107,7 +108,8 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
     outputs = dict(
         total_losses=total_losses, 
         all_losses=all_losses, 
-        all_indices=all_indices
+        all_indices=all_indices,
+        duration=time.time()-start_time
     )
     return outputs
 
@@ -181,12 +183,14 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
     outputs = compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window=window, device=device)
     outputs.update(dict(total_chars=total_chars, total_tokens=total_tokens))
     metrics = compute_metrics(**{k: outputs[k] for k in ["total_losses", "total_chars", "total_tokens"]})
-
+    metrics.update({k: v for k, v in outputs.items() if isinstance(v, float)})
     print(metrics)
+    metrics.update(dict(window=window, batch_size=loader_kwargs.batch_size))
     with open(output_dir/"metrics.json", "wt") as file:
         json.dump(metrics, file)
     for k, v in outputs.items():
-        torch.save(v, output_dir/f"{k}.bin")
+        if isinstance(v, torch.Tensor):
+            torch.save(v, output_dir/f"{k}.bin")
 
 
 def cli():
