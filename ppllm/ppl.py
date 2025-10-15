@@ -1,3 +1,4 @@
+import warnings
 from jsonargparse import CLI
 import json
 from dataclasses import dataclass, asdict
@@ -143,7 +144,8 @@ def count_tokens_chars_discount_bos(texts, tokenizer):
 def count_tokens_chars(texts, tokenizer):
     total_chars, total_tokens = [], []
     if tokenizer.bos_token is None:
-        return count_tokens_chars_discount_bos(texts, tokenizer)
+        warnings.warn(f"{tokenizer.bos_token=} so the first token surprisal is not computed but it's number of characters is counted so BPC is a bit optimistic")
+        #return count_tokens_chars_discount_bos(texts, tokenizer)
     all_tokens = tokenizer(texts, add_special_tokens=False)
     for text, tokens in zip(texts, all_tokens["input_ids"]):
         total_chars.append(len(text))
@@ -152,10 +154,25 @@ def count_tokens_chars(texts, tokenizer):
     return total_chars, total_tokens
 
 
+def compute_ppl(texts, model, tokenizer, tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), 
+                loader_kwargs: LoaderKwargs = LoaderKwargs(), window: int = None, device: str = None):
+    tokenizer_kwargs = asdict(tokenizer_kwargs)
+    if device is None:
+        device = model.device
+    total_chars, total_tokens = count_tokens_chars(texts, tokenizer)
+    indices = total_tokens.argsort(descending=True)
+    sorted_texts = [texts[i] for i in indices]
+    if loader_kwargs.batch_size is None:
+        loader_kwargs.batch_size = find_batch_size(sorted_texts, model, tokenizer, tokenizer_kwargs, device, window=window)
+    loader = DataLoader(sorted_texts, **asdict(loader_kwargs), shuffle=False, collate_fn=None)
+    outputs = compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window=window, device=device)
+    outputs.update(dict(total_chars=total_chars, total_tokens=total_tokens))
+    return outputs
+
+
 def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: int = None, input_key: str = "text", split: str = "test",
          tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), loader_kwargs: LoaderKwargs = LoaderKwargs()):
     """Compute the PPL and Surprisal of an LLM"""
-    tokenizer_kwargs = asdict(tokenizer_kwargs)
     assert window is None or window%2 == 0, f"window must be dividible by 2, got {window}"
     output_dir.mkdir(exist_ok=True, parents=True)
     tokenizer = AutoTokenizer.from_pretrained(
@@ -174,14 +191,7 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
     device = get_device()
     model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs)).to(device)
     texts = load_texts(data_path, input_key=input_key, split=split)
-    total_chars, total_tokens = count_tokens_chars(texts, tokenizer)
-    indices = total_tokens.argsort(descending=True)
-    sorted_texts = [texts[i] for i in indices]
-    if loader_kwargs.batch_size is None:
-        loader_kwargs.batch_size = find_batch_size(sorted_texts, model, tokenizer, tokenizer_kwargs, device, window=window)
-    loader = DataLoader(sorted_texts, **asdict(loader_kwargs), shuffle=False, collate_fn=None)
-    outputs = compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window=window, device=device)
-    outputs.update(dict(total_chars=total_chars, total_tokens=total_tokens))
+    outputs = compute_ppl(texts, model, tokenizer, tokenizer_kwargs=tokenizer_kwargs, loader_kwargs=loader_kwargs, window=window, device=device)
     metrics = compute_metrics(**{k: outputs[k] for k in ["total_losses", "total_chars", "total_tokens"]})
     metrics.update({k: v for k, v in outputs.items() if isinstance(v, float)})
     print(metrics)
