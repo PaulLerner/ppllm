@@ -4,6 +4,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional, Any, Dict
 from jsonargparse import CLI
+import time
 
 import numpy as np
 
@@ -41,6 +42,7 @@ def main(output_dir: Path, data_path: Path, llm_arguments: LlmArguments, input_k
     llm = LLM(**asdict(llm_arguments))
     texts = load_texts(data_path, input_key=input_key, split=split)
     sampling_params = SamplingParams(prompt_logprobs=1, max_tokens=1)
+    start_time = time.time()
     outputs = llm.generate(texts, sampling_params)
     assert len(outputs) == len(texts)
     total_logps, total_chars, total_tokens = [], [], []
@@ -67,7 +69,8 @@ def main(output_dir: Path, data_path: Path, llm_arguments: LlmArguments, input_k
         # N.B. this is the same as `np.exp(total_logps.sum()/total_tokens.sum())`
         "ppl": 2**(total_surprisal/total_tokens.sum()).item(),
         "bpc": (total_surprisal/total_chars.sum()).item(),
-        "surprisal": total_surprisal.item()
+        "surprisal": total_surprisal.item(),
+        "duration": time.time()-start_time
     }
 
     print(metrics)
