@@ -74,6 +74,7 @@ def main(output_dir: Path, data_path: Path, llm_arguments: LlmArguments, input_k
     }
 
     print(metrics)
+    metrics.update(dict(software=Path(__file__).stem))
     with open(output_dir/"metrics.json", "wt") as file:
         json.dump(metrics, file)
     for name, array in zip(["log_prob", "char", "tokens"], [total_logps, total_chars, total_tokens]):

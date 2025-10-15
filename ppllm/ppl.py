@@ -185,7 +185,7 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
     metrics = compute_metrics(**{k: outputs[k] for k in ["total_losses", "total_chars", "total_tokens"]})
     metrics.update({k: v for k, v in outputs.items() if isinstance(v, float)})
     print(metrics)
-    metrics.update(dict(window=window, batch_size=loader_kwargs.batch_size))
+    metrics.update(dict(window=window, batch_size=loader_kwargs.batch_size, software=Path(__file__).stem))
     with open(output_dir/"metrics.json", "wt") as file:
         json.dump(metrics, file)
     for k, v in outputs.items():
