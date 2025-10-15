@@ -5,7 +5,9 @@ A Python Library to Compute LLM's Perplexity and Surprisal
 🤔 ppllm allows to compute various information-theoretic metrics given a text and an LLM, 
 including Perplexity (PPL), Surprisal, and bits per character (BPC).
 
-Software | PPL | Surprisal | BPC | Windowed
+🤔 ppllm implements windowed PPL, which allows to compute the PPL of arbitrarily long texts.
+
+Software | PPL | Surprisal | BPC | Long texts
 ---------|------------|-----------|-----|----------
 [lmppl](https://github.com/asahi417/lmppl) |  ✅ | ❌ | ❌ | ❌
 [surprisal_from_llm](https://github.com/remo-help/surprisal_from_llm) | ❌|  ✅| ❌ | ❌
@@ -17,7 +19,8 @@ Upcoming metrics (see [the roadmap](github.com/PaulLerner/ppllm/issues/1)):
 - word-level surprisal
 - bits per byte (BPB)
 
-In addition to windowed PPL, 🤔 ppllm is benchmarked against:
+
+🤔 ppllm is benchmarked against:
 - a [vllm-based implementation](benchmark/vllmppl.py): 4.15 times faster!
 - a [naive hugging face implementation](benchmark/hf_shuffle.py), which does not sort texts by length: 4.61 times faster!
 
@@ -38,7 +41,18 @@ In practice, 🤔 ppllm uses a stride of half the window size, instead of the un
 (Illustration by https://huggingface.co/docs/transformers/perplexity)
 
 ## Installation
-TODO
+### via pip
+`pip install ppllm`
+
+### via uv
+`uv add ppllm`
+
+### editable
+```bash
+git clone https://github.com/PaulLerner/ppllm.git
+cd ppllm
+uv sync
+```
 
 ## Usage
 ### CLI
@@ -103,10 +117,9 @@ The [roadmap](github.com/PaulLerner/ppllm/issues/1) will probably never happen w
 Setup: 
 - NVIDIA V100 (32GB)
 - Llama-3.1-8B
+- wikitext-2-v1
 
-### wikitext-2-v1
-
-software | throughput in seconds
+software | compute time in seconds (↓)
 -----------|------
 vllm | 328
 hf_shuffle | 364
