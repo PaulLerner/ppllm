@@ -14,14 +14,12 @@ def get_device():
 
 @torch.no_grad()
 def find_batch_size(texts, model, tokenizer, tokenizer_kwargs, device, window: int = None):
-    if device == "mps":
-        raise NotImplementedError(f"{device} not implemented yet")
-    elif device != "cuda":
-        raise ValueError(f"{device} not supported")
+    if str(device) == "cpu":
+        raise ValueError(f"{device} not supported, set the batch size manually")
     
     batch_size = 1
     ok_batch_size = None
-    while True:
+    while batch_size < len(texts):
         input_ids = tokenizer(texts[:batch_size], **tokenizer_kwargs)["input_ids"].to(device)
         if window is not None:
             input_ids = input_ids[:, :window]
@@ -36,6 +34,7 @@ def find_batch_size(texts, model, tokenizer, tokenizer_kwargs, device, window: i
         else:
             ok_batch_size = batch_size
             batch_size *= 2
+    return ok_batch_size
 
 
 def unsort(sorted_values, indices):
