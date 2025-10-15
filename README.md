@@ -1,3 +1,7 @@
+<a target="_blank" href="https://colab.research.google.com/github/PaulLerner/ppllm/blob/main/ppllm_example.ipynb">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
+</a>
+
 # 🤔 ppllm
 A Python Library to Compute LLM's Perplexity and Surprisal
 
@@ -55,6 +59,11 @@ uv sync
 ```
 
 ## Usage
+### Python
+🤔 ppllm is a pythonic library, see the [example notebook](ppllm_example.ipynb) 
+to see how to use it from python 
+(you can also [open it in Colab](https://colab.research.google.com/github/PaulLerner/ppllm/blob/main/ppllm_example.ipynb))
+
 ### CLI
 ```bash
 python -m ppllm /path/to/output /path/to/data --model_kwargs.pretrained_model_name_or_path=meta-llama/Llama-3.1-8B --window=64
