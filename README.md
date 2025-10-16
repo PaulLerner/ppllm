@@ -46,16 +46,16 @@ In practice, 🤔 ppllm uses a stride of half the window size, instead of the un
 (Illustration by https://huggingface.co/docs/transformers/perplexity)
 
 ### Metrics
-All metrics are defined assuming access to a (large) language model that defines a probability distribution over a sequence of tokens $x=(x_0,x_1,x_2,...,x_L)$:
+All metrics are defined assuming access to a (large) language model that defines a probability distribution over a sequence of tokens $x=(x_0,x_1,x_2,\dots,x_L)$:
 
-$$P(x) = P(x_0)  P(x_1|x_0)  P(x_2|x_{<2})  ... P(x_L|x_{<L})$$
+$P(x) = P(x_0)  P(x_1|x_0)  P(x_2|x_{<2})  \dots P(x_L|x_{<L})$
 
 If the model is well defined, $x_0$ should correspond to a special token marking the beginning of the sequence.
 
 For numerical stability, we compute the log probability:
 
 
-$$\log P(x) = \log P(x_0)  + \log P(x_1|x_0)  + \log P(x_2|x_{<2})+  ... +  \log P(x_L|x_{<L})$$
+$\log P(x) = \log P(x_0)  + \log P(x_1|x_0)  + \log P(x_2|x_{<2})+  ... +  \log P(x_L|x_{<L})$
 
 From this, we can compute the negative log probability (aka negative log likelihood, aka cross-entropy), which is the loss LLMs are trained to minimize (during pretraining):
 
