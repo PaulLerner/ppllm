@@ -10,13 +10,14 @@ A Python Library to Compute LLM's Perplexity and Surprisal
 including Perplexity (PPL), Surprisal, and bits per character (BPC).
 
 🤔 ppllm implements windowed PPL, which allows to compute the PPL of arbitrarily long texts.
+It offers both a CLI and a python API.
 
-Software | PPL | Surprisal | BPC | Long texts
----------|------------|-----------|-----|----------
-[lmppl](https://github.com/asahi417/lmppl) |  ✅ | ❌ | ❌ | ❌
-[surprisal_from_llm](https://github.com/remo-help/surprisal_from_llm) | ❌|  ✅| ❌ | ❌
-[evaluate](https://github.com/huggingface/evaluate/blob/main/metrics/perplexity/perplexity.py) |  ✅ | ❌ | ❌|  ✅
-🤔 ppllm | ✅ | ✅ | ✅|  ✅
+Software | PPL | Surprisal | BPC | Long texts | CLI | API
+---------|-----|-----------|-----|------------|-----|-----
+[lmppl](https://github.com/asahi417/lmppl) |  ✅ | ❌ | ❌ | ❌ | ❌|  ✅
+[surprisal_from_llm](https://github.com/remo-help/surprisal_from_llm) | ❌|  ✅| ❌ | ❌|  ✅| ❌
+[evaluate](https://github.com/huggingface/evaluate/blob/main/metrics/perplexity/perplexity.py) |  ✅ | ❌ | ❌|  ✅| ❌|  ✅
+🤔 ppllm | ✅ | ✅ | ✅|  ✅|  ✅|  ✅
 
 
 Upcoming metrics (see [the roadmap](github.com/PaulLerner/ppllm/issues/1)):
@@ -43,6 +44,35 @@ Windowed PPL restrains the context size to a fixed window as illustrated below (
 In practice, 🤔 ppllm uses a stride of half the window size, instead of the unit stride illustrated here.
 
 (Illustration by https://huggingface.co/docs/transformers/perplexity)
+
+### Metrics
+All metrics are defined assuming access to a (large) language model that defines a probability distribution over a sequence of tokens $x=(x_0,x_1,x_2,...,x_L)$:
+
+$$P(x) = P(x_0)  P(x_1|x_0)  P(x_2|x_{<2})  ... P(x_L|x_{<L})$$
+
+If the model is well defined, $x_0$ should correspond to a special token marking the beginning of the sequence.
+
+For numerical stability, we compute the log probability:
+
+
+$$\log P(x) = \log P(x_0)  + \log P(x_1|x_0)  + \log P(x_2|x_{<2})+  ... +  \log P(x_L|x_{<L})$$
+
+From this, we can compute the negative log probability (aka negative log likelihood, aka cross-entropy), which is the loss LLMs are trained to minimize (during pretraining):
+
+$$\mathcal{L}(x)=-\log P(x)$$
+
+Then comes surprisal, which is the same but is usually expressed in bits, using a $\log_2$ logarithm:
+
+
+$$S(x)=-\log_2 P(x)=\frac{\mathcal{L}(x)}{\log(2)}$$
+
+From surprisal, we can define bits per character (BPC), which simply normalizes the surprisal by the number of characters $C$ of $x$:
+
+$$\mathrm{BPC}(x)=\frac{S(x)}{C}$$
+
+Similarly, we define perplexity (PPL), which normalizes the invert probability by the number of tokens $L$, which is equivalent to the exponentiate of the surprisal normalized by $L$:
+
+$$\mathrm{PPL}(x)=\sqrt[L]{\frac{1}{P(x)}}=2^{\frac{S(x)}{L}}=\exp\left(\frac{\mathcal{L}(x)}{L}\right)$$
 
 ## Installation
 ### via pip
