@@ -19,7 +19,7 @@ def find_batch_size(texts, model, tokenizer, tokenizer_kwargs, device, window: i
     
     batch_size = 1
     ok_batch_size = None
-    while batch_size < len(texts):
+    while ok_batch_size is None or ok_batch_size < len(texts):
         input_ids = tokenizer(texts[:batch_size], **tokenizer_kwargs)["input_ids"].to(device)
         if window is not None:
             input_ids = input_ids[:, :window]
@@ -29,11 +29,11 @@ def find_batch_size(texts, model, tokenizer, tokenizer_kwargs, device, window: i
             if ok_batch_size is None:
                 raise ValueError(f"Got Exception {e=} (likely OOM) with {batch_size=}, try using a smaller {window=}")
             else:
-                print(f"Found {ok_batch_size=}")
-                return ok_batch_size
+                break
         else:
             ok_batch_size = batch_size
             batch_size *= 2
+    print(f"Found {ok_batch_size=}")
     return ok_batch_size
 
 
