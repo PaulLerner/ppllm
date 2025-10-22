@@ -72,9 +72,13 @@ From surprisal, we can define bits per character (BPC), which simply normalizes 
 
 $$\mathrm{BPC}(x)=\frac{S(x)}{C}$$
 
+Note, in case the model doesn't define $x_0$ (BOS), $C$ does not account for the characters of $x_1$.
+
 Similarly, we define perplexity (PPL), which normalizes the invert probability by the number of tokens $L$, which is equivalent to the exponentiate of the surprisal normalized by $L$:
 
 $$\mathrm{PPL}(x)=\sqrt[L]{\frac{1}{P(x)}}=2^{\frac{S(x)}{L}}=\exp\left(\frac{\mathcal{L}(x)}{L}\right)$$
+
+Likewise, in case the model doesn't define $x_0$ (BOS), we normalize by $L-1$ instead.
 
 ## Installation
 ### via pip

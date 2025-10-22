@@ -137,16 +137,22 @@ def compute_metrics(total_losses, total_chars, total_tokens):
 
 
 def count_tokens_chars_discount_bos(texts, tokenizer):
-    # if there's no BOS, we should not count the first token
-    raise NotImplementedError()
+    i2token = {i: token for token, i in tokenizer.vocab.items()}
+    all_tokens = tokenizer(texts, add_special_tokens=False)
+    total_chars, total_tokens = [], []
+    for text, tokens in zip(texts, all_tokens["input_ids"]):
+        # if there's no BOS, we should not count the first token
+        total_chars.append(len(text)-len(i2token[tokens[0]]))
+        total_tokens.append(len(tokens)-1)
+    total_chars, total_tokens = torch.tensor(total_chars), torch.tensor(total_tokens)
+    return total_chars, total_tokens
 
 
 def count_tokens_chars(texts, tokenizer):
-    total_chars, total_tokens = [], []
     if tokenizer.bos_token is None:
-        warnings.warn(f"{tokenizer.bos_token=} so the first token surprisal is not computed but it's number of characters is counted so BPC is a bit optimistic")
-        #return count_tokens_chars_discount_bos(texts, tokenizer)
+        return count_tokens_chars_discount_bos(texts, tokenizer)
     all_tokens = tokenizer(texts, add_special_tokens=False)
+    total_chars, total_tokens = [], []
     for text, tokens in zip(texts, all_tokens["input_ids"]):
         total_chars.append(len(text))
         total_tokens.append(len(tokens))
