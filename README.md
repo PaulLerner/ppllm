@@ -160,8 +160,12 @@ Feel free to open an issue or PR to contribute.
 The [roadmap](github.com/PaulLerner/ppllm/issues/1) will probably never happen without your help :)
 
 ### Building
-TODO bump version manually pyproject.toml or using `uv bump`?
+Use:
+- `uv version --bump patch` for `1.2.3 => 1.2.4`
+- `uv version --bump minor` for `1.2.3 => 1.3.0`
+- `uv version --bump major` for `1.2.3 => 2.0.0`
 
+Then
 ```bash
 uv build
 uv publish --token=<TOKEN>
