@@ -149,9 +149,19 @@ loader_kwargs:
 >>> python -m ppllm --config=/path/to/config.yaml
 ```
 
+TODO describe data input/output formats
+
 ## Contributing
 Feel free to open an issue or PR to contribute. 
 The [roadmap](github.com/PaulLerner/ppllm/issues/1) will probably never happen without your help :)
+
+### Building
+TODO bump version manually pyproject.toml or using `uv bump`?
+
+```bash
+uv build
+uv publish --token=<TOKEN>
+```
 
 ## Benchmark
 
