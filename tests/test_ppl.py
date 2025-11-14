@@ -34,6 +34,14 @@ class TestPpl(TestBase):
         total_chars, total_tokens = count_tokens_chars(dataset, tokenizer)
         self.assertAllEqual(total_chars, true_total_chars)
         self.assertAllEqual(total_tokens, true_total_tokens)
+
+    def test_count_tokens_chars_context(self):
+        total_chars, total_tokens = count_tokens_chars(dataset, tokenizer)
+        for item in dataset:
+            item["context"] = ""
+        context_total_chars, context_total_tokens = count_tokens_chars(dataset, tokenizer)
+        self.assertAllEqual(total_chars, context_total_chars)
+        self.assertAllEqual(total_tokens, context_total_tokens)
     
     def test_compute_ppl(self):
         outputs = compute_ppl(dataset, model, tokenizer)
