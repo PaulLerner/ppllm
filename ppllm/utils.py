@@ -43,21 +43,15 @@ def unsort(sorted_values, indices):
     return unsorted
 
 
-def load_texts(path: Path, input_key: str = "text", split: str = "test"):
-    # TODO from txt
-    dataset = load_dataset(path)
-    subset = get_split(dataset, split)
-    return list(subset[input_key])
-
-
-def load_dataset(data_path: Path):
+def load_dataset(data_path: Path, split: str = "test"):
     if data_path.suffix == ".csv":
         dataset = pd.read_csv(data_path)
     elif (data_path/"dataset_info.json").exists() or (data_path/"dataset_dict.json").exists():
         dataset = datasets.load_from_disk(data_path)
     else:
         dataset = datasets.load_dataset(data_path)
-    return dataset
+    subset = get_split(dataset, split)
+    return list(subset)
 
 
 def get_split(dataset, split):

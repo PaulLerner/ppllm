@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from .utils import load_texts, unsort, get_device, find_batch_size
+from .utils import load_dataset, unsort, get_device, find_batch_size
 
 
 @dataclass
@@ -64,7 +64,7 @@ class TokenizerKwargs:
 
 
 @torch.no_grad()
-def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int = None, device: str = None):
+def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int = None, device: str = None, input_key: str = "text"):
     start_time = time.time()
     if device is None:
         device = model.device
@@ -75,11 +75,20 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
     all_losses, all_indices = [], []
     i = 0
     for batch in tqdm(loader, total=len(loader.dataset)//loader.batch_size):
-        input_ids = tokenizer(batch, **tokenizer_kwargs)["input_ids"].to(device)
+        # entire text including context + what we want to compute surprisal of
+        input_ids = tokenizer(batch[input_key], **tokenizer_kwargs)["input_ids"].to(device)
+        # context should not be accounted in surprisal
+        if "context" in batch:
+            labels = input_ids.clone()
+            context_lengths = [len(input_id) for input_id in tokenizer(batch["context"])["input_ids"]]
+            for i, length in enumerate(context_lengths):
+                labels[i, :length] = loss_fct.ignore_index
+        else:
+            labels = input_ids
+
         batch_size, seq_len = input_ids.shape
         if window is None:
             logits = model(input_ids, return_dict=True).logits
-            labels = input_ids     
             logits = logits[:, :-1].contiguous().view(-1, model.config.vocab_size)
             labels = labels[:, 1:].contiguous().view(-1)
             losses = loss_fct(logits, labels).view(batch_size, seq_len-1)
@@ -94,11 +103,11 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
                 logits = model(window_ids, return_dict=True).logits
                 if j > 0:
                     logits = logits[:, stride:-1].contiguous().view(-1, model.config.vocab_size)
-                    labels = window_ids[:, stride+1:].contiguous().view(-1)
+                    label_window_ids = labels[:, j+stride+1: j+window].contiguous().view(-1)
                 else:
                     logits = logits[:, :-1].contiguous().view(-1, model.config.vocab_size)
-                    labels = window_ids[:, 1:].contiguous().view(-1)
-                losses = loss_fct(logits, labels).view(batch_size, -1)
+                    label_window_ids = labels[:, j+1: j+window].contiguous().view(-1)
+                losses = loss_fct(logits, label_window_ids).view(batch_size, -1)
                 all_indices.append(indices[i: i+batch_size].repeat_interleave(losses.shape[1]))
                 all_losses.append(losses.reshape(-1).cpu())
                 window_losses.append(losses.sum(1))
@@ -136,42 +145,44 @@ def compute_metrics(total_losses, total_chars, total_tokens):
     return metrics
 
 
-def count_tokens_chars_discount_bos(texts, tokenizer):
-    i2token = {i: token for token, i in tokenizer.vocab.items()}
-    all_tokens = tokenizer(texts, add_special_tokens=False)
+def count_tokens_chars(dataset, tokenizer, input_key: str = "text"):
+    discount_bos = tokenizer.bos_token is None
+    if discount_bos:
+        i2token = {i: token for token, i in tokenizer.vocab.items()}
+    texts = [item[input_key] for item in dataset]
+    all_tokens = tokenizer(texts, add_special_tokens=False)["input_ids"]
+    if "context" in dataset[0]:
+        contexts = [item["context"] for item in dataset]
+        all_contexts = tokenizer(contexts, add_special_tokens=False)["input_ids"]
+    else:
+        contexts = [""]*len(dataset)
+        all_contexts = [[]]*len(dataset)
     total_chars, total_tokens = [], []
-    for text, tokens in zip(texts, all_tokens["input_ids"]):
+    for text, context, tokens, context_tokens in zip(texts, contexts, all_tokens, all_contexts):
         # if there's no BOS, we should not count the first token
-        total_chars.append(len(text)-len(i2token[tokens[0]]))
-        total_tokens.append(len(tokens)-1)
+        if discount_bos and len(context)==0:
+            total_chars.append(len(text)-len(i2token[tokens[0]]))
+            total_tokens.append(len(tokens)-1)
+        # if there's not BOS, but context, no need to discount BOS
+        else:
+            total_chars.append(len(text)-len(context))
+            total_tokens.append(len(tokens)-len(context_tokens))
     total_chars, total_tokens = torch.tensor(total_chars), torch.tensor(total_tokens)
     return total_chars, total_tokens
 
 
-def count_tokens_chars(texts, tokenizer):
-    if tokenizer.bos_token is None:
-        return count_tokens_chars_discount_bos(texts, tokenizer)
-    all_tokens = tokenizer(texts, add_special_tokens=False)
-    total_chars, total_tokens = [], []
-    for text, tokens in zip(texts, all_tokens["input_ids"]):
-        total_chars.append(len(text))
-        total_tokens.append(len(tokens))
-    total_chars, total_tokens = torch.tensor(total_chars), torch.tensor(total_tokens)
-    return total_chars, total_tokens
-
-
-def compute_ppl(texts, model, tokenizer, tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), 
-                loader_kwargs: LoaderKwargs = LoaderKwargs(), window: int = None, device: str = None):
+def compute_ppl(dataset, model, tokenizer, tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), 
+                loader_kwargs: LoaderKwargs = LoaderKwargs(), window: int = None, device: str = None, input_key: str = "text"):
     tokenizer_kwargs = asdict(tokenizer_kwargs)
     if device is None:
         device = model.device
-    total_chars, total_tokens = count_tokens_chars(texts, tokenizer)
+    total_chars, total_tokens = count_tokens_chars(dataset, tokenizer, input_key=input_key)
     indices = total_tokens.argsort(descending=True)
-    sorted_texts = [texts[i] for i in indices]
+    sorted_dataset = [dataset[i] for i in indices]
     if loader_kwargs.batch_size is None:
-        loader_kwargs.batch_size = find_batch_size(sorted_texts, model, tokenizer, tokenizer_kwargs, device, window=window)
-    loader = DataLoader(sorted_texts, **asdict(loader_kwargs), shuffle=False, collate_fn=None)
-    outputs = compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window=window, device=device)
+        loader_kwargs.batch_size = find_batch_size([item[input_key] for item in sorted_dataset], model, tokenizer, tokenizer_kwargs, device, window=window)
+    loader = DataLoader(sorted_dataset, **asdict(loader_kwargs), shuffle=False)
+    outputs = compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window=window, device=device, input_key=input_key)
     outputs.update(dict(total_chars=total_chars, total_tokens=total_tokens))
     return outputs
 
@@ -196,8 +207,8 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
         tokenizer.pad_token = tokenizer.eos_token
     device = get_device()
     model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs)).to(device)
-    texts = load_texts(data_path, input_key=input_key, split=split)
-    outputs = compute_ppl(texts, model, tokenizer, tokenizer_kwargs=tokenizer_kwargs, loader_kwargs=loader_kwargs, window=window, device=device)
+    dataset = load_dataset(data_path, split=split)
+    outputs = compute_ppl(dataset, model, tokenizer, tokenizer_kwargs=tokenizer_kwargs, loader_kwargs=loader_kwargs, window=window, device=device, input_key=input_key)
     metrics = compute_metrics(**{k: outputs[k] for k in ["total_losses", "total_chars", "total_tokens"]})
     metrics.update({k: v for k, v in outputs.items() if isinstance(v, float)})
     print(metrics)
