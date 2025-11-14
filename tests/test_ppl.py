@@ -6,9 +6,14 @@ import copy
 
 from ppllm.ppl import count_tokens_chars, compute_ppl
 
-
-model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-0.6B-Base").cuda()
-tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-0.6B-Base")
+MODEL_NAME = "Qwen/Qwen3-0.6B-Base"#croissantllm/CroissantLLMBase"#
+model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).cuda()
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+# ensure right padding so we don't need attention mask
+if tokenizer.padding_side != "right":
+    tokenizer.padding_side = "right"
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
 dataset = [
     {"text": "I have a dream"},
     {"text": "I has a dream"},
@@ -44,6 +49,17 @@ class TestPpl(TestBase):
         context_total_chars, context_total_tokens = count_tokens_chars(dataset_with_context, tokenizer)
         self.assertAllEqual(total_chars, context_total_chars)
         self.assertAllEqual(total_tokens, context_total_tokens)
+
+    def test_count_tokens_chars_context_non_empty(self):
+        self.assertIsNotNone(tokenizer.bos_token)
+        total_chars, _ = count_tokens_chars(dataset, tokenizer)
+        context = "Some context "
+        dataset_with_context = copy.deepcopy(dataset)
+        for item in dataset_with_context:
+            item["context"] = context_total_chars
+            item["text"] = context + item["text"]
+        context_total_chars, _ = count_tokens_chars(dataset_with_context, tokenizer)
+        self.assertAllEqual(total_chars, context_total_chars-len(context))
     
     def test_compute_ppl(self):
         outputs = compute_ppl(dataset, model, tokenizer)
