@@ -2,6 +2,7 @@ import unittest
 
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
+import copy
 
 from ppllm.ppl import count_tokens_chars, compute_ppl
 
@@ -37,15 +38,25 @@ class TestPpl(TestBase):
 
     def test_count_tokens_chars_context(self):
         total_chars, total_tokens = count_tokens_chars(dataset, tokenizer)
-        for item in dataset:
+        dataset_with_context = copy.deepcopy(dataset)
+        for item in dataset_with_context:
             item["context"] = ""
-        context_total_chars, context_total_tokens = count_tokens_chars(dataset, tokenizer)
+        context_total_chars, context_total_tokens = count_tokens_chars(dataset_with_context, tokenizer)
         self.assertAllEqual(total_chars, context_total_chars)
         self.assertAllEqual(total_tokens, context_total_tokens)
     
     def test_compute_ppl(self):
         outputs = compute_ppl(dataset, model, tokenizer)
         self.assertAllClose(outputs["total_losses"], true_total_losses)
+
+    def test_compute_ppl_context(self):
+        context = "Some context "
+        dataset_with_context = copy.deepcopy(dataset)
+        for item in dataset_with_context:
+            item["context"] = context
+            item["text"] = context + item["text"]
+        outputs = compute_ppl(dataset_with_context, model, tokenizer)
+        self.assertAllTrue(outputs["all_losses"].reshape(len(dataset), -1)[:, :2]==0.)
 
 
 if __name__ == '__main__':
