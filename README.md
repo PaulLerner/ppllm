@@ -154,6 +154,7 @@ loader_kwargs:
 ```
 
 TODO describe data input/output formats
+- context field
 
 ## Contributing
 Feel free to open an issue or PR to contribute. 
@@ -170,6 +171,10 @@ Then
 uv build
 uv publish --token=<TOKEN>
 ```
+
+### Tests
+
+`python -m unittest tests/test_ppl.py`
 
 ## Benchmark
 
