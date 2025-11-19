@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from .utils import load_dataset, unsort, get_device, find_batch_size
+from .utils import fix_tokenizer, load_dataset, unsort, get_device, find_batch_size
 
 
 @dataclass
@@ -199,12 +199,7 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
         add_eos_token=False, 
         trust_remote_code=model_kwargs.trust_remote_code
     )
-    # ensure right padding so we don't need attention mask
-    if tokenizer.padding_side != "right":
-        tokenizer.padding_side = "right"
-    # FIXME: in this case the surprisal of EOS will not be computed
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+    fix_tokenizer(tokenizer)
     device = get_device()
     model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs)).to(device)
     dataset = load_dataset(data_path, split=split)

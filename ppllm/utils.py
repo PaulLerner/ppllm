@@ -12,6 +12,15 @@ def get_device():
     return "cpu"
 
 
+def fix_tokenizer(tokenizer):
+    # ensure right padding so we don't need attention mask
+    if tokenizer.padding_side != "right":
+        tokenizer.padding_side = "right"
+    # FIXME: in this case the surprisal of EOS will not be computed
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+
 @torch.no_grad()
 def find_batch_size(texts, model, tokenizer, tokenizer_kwargs, device, window: int = None):
     if str(device) == "cpu":
