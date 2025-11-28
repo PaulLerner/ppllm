@@ -4,14 +4,6 @@ import datasets
 import torch
 
 
-def get_device():
-    if torch.cuda.is_available():
-        return "cuda"
-    if torch.mps.is_available():
-        return "mps"
-    return "cpu"
-
-
 def fix_tokenizer(tokenizer):
     # ensure right padding so we don't need attention mask
     if tokenizer.padding_side != "right":

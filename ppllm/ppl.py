@@ -15,14 +15,14 @@ from torch.utils.data import DataLoader
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from .utils import fix_tokenizer, load_dataset, unsort, get_device, find_batch_size
+from .utils import fix_tokenizer, load_dataset, unsort, find_batch_size
 
 
 @dataclass
 class ModelKwargs:
     """Arguments for HF's model"""
     pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None
-    #device_map: str = "auto"
+    device_map: str = "auto"
     config: Optional[Union[str, os.PathLike]] = None
     cache_dir: Optional[Union[str, os.PathLike]] = None
     ignore_mismatched_sizes: bool = False
@@ -64,10 +64,9 @@ class TokenizerKwargs:
 
 
 @torch.no_grad()
-def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int = None, device: str = None, input_key: str = "text"):
+def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int = None, input_key: str = "text"):
     start_time = time.time()
-    if device is None:
-        device = model.device
+    device = model.device
     if window is not None:
         stride = window // 2
     loss_fct = nn.CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
@@ -200,10 +199,9 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
         trust_remote_code=model_kwargs.trust_remote_code
     )
     fix_tokenizer(tokenizer)
-    device = get_device()
-    model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs)).to(device)
+    model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs))
     dataset = load_dataset(data_path, split=split)
-    outputs = compute_ppl(dataset, model, tokenizer, tokenizer_kwargs=tokenizer_kwargs, loader_kwargs=loader_kwargs, window=window, device=device, input_key=input_key)
+    outputs = compute_ppl(dataset, model, tokenizer, tokenizer_kwargs=tokenizer_kwargs, loader_kwargs=loader_kwargs, window=window, input_key=input_key)
     metrics = compute_metrics(**{k: outputs[k] for k in ["total_losses", "total_chars", "total_tokens"]})
     metrics.update({k: v for k, v in outputs.items() if isinstance(v, float)})
     print(metrics)
