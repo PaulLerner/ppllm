@@ -55,24 +55,17 @@ def unsort(sorted_values, indices):
 def load_dataset(data_path: Path, split: str = "test"):
     if data_path.suffix == ".csv":
         dataset = pd.read_csv(data_path)
+        if split is None:
+            subset = dataset
+        elif isinstance(split, str):
+            subset = dataset[dataset.split==split]
+        else:
+            subset = dataset[dataset.split.isin(split)]
+        subset = subset.to_dict('records')
     elif (data_path/"dataset_info.json").exists() or (data_path/"dataset_dict.json").exists():
         dataset = datasets.load_from_disk(data_path)
+        subset = list(dataset[split])
     else:
         dataset = datasets.load_dataset(data_path)
-    subset = get_split(dataset, split)
-    return list(subset)
-
-
-def get_split(dataset, split):
-    if isinstance(dataset, pd.DataFrame):
-        if split is None:
-            return dataset
-        elif isinstance(split, str):
-            return dataset[dataset.split==split]
-        else:
-            return dataset[dataset.split.isin(split)]
-    else:
-        if split is None:
-            return dataset
-        return dataset[split]
-        
+        subset = list(dataset[split])
+    return subset
