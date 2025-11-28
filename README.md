@@ -10,14 +10,14 @@ A Python Library to Compute LLM's Perplexity and Surprisal
 including Perplexity (PPL), Surprisal, and bits per character (BPC).
 
 🤔 ppllm implements windowed PPL, which allows to compute the PPL of arbitrarily long texts.
-It offers both a CLI and a python API.
+It offers both a CLI and a python API and supports large models through pipeline parallelism (PP).
 
-Software | PPL | Surprisal | BPC | Long texts | CLI | API
----------|-----|-----------|-----|------------|-----|-----
-[lmppl](https://github.com/asahi417/lmppl) |  ✅ | ❌ | ❌ | ❌ | ❌|  ✅
-[surprisal_from_llm](https://github.com/remo-help/surprisal_from_llm) | ❌|  ✅| ❌ | ❌|  ✅| ❌
-[evaluate](https://github.com/huggingface/evaluate/blob/main/metrics/perplexity/perplexity.py) |  ✅ | ❌ | ❌|  ✅| ❌|  ✅
-🤔 ppllm | ✅ | ✅ | ✅|  ✅|  ✅|  ✅
+Software | PPL | Surprisal | BPC | Long texts | CLI | API | PP
+---------|-----|-----------|-----|------------|-----|-----|-----
+[lmppl](https://github.com/asahi417/lmppl) |  ✅ | ❌ | ❌ | ❌ | ❌|  ✅| ❌
+[surprisal_from_llm](https://github.com/remo-help/surprisal_from_llm) | ❌|  ✅| ❌ | ❌|  ✅| ❌| ❌
+[evaluate](https://github.com/huggingface/evaluate/blob/main/metrics/perplexity/perplexity.py) |  ✅ | ❌ | ❌|  ✅| ❌|  ✅| ❌
+🤔 ppllm | ✅ | ✅ | ✅|  ✅|  ✅|  ✅|  ✅
 
 
 Upcoming metrics (see [the roadmap](github.com/PaulLerner/ppllm/issues/1)):
