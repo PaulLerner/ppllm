@@ -171,17 +171,15 @@ def count_tokens_chars(dataset, tokenizer, input_key: str = "text"):
 
 
 def compute_ppl(dataset, model, tokenizer, tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), 
-                loader_kwargs: LoaderKwargs = LoaderKwargs(), window: int = None, device: str = None, input_key: str = "text"):
+                loader_kwargs: LoaderKwargs = LoaderKwargs(), window: int = None, input_key: str = "text"):
     tokenizer_kwargs = asdict(tokenizer_kwargs)
-    if device is None:
-        device = model.device
     total_chars, total_tokens = count_tokens_chars(dataset, tokenizer, input_key=input_key)
     indices = total_tokens.argsort(descending=True)
     sorted_dataset = [dataset[i] for i in indices]
     if loader_kwargs.batch_size is None:
-        loader_kwargs.batch_size = find_batch_size([item[input_key] for item in sorted_dataset], model, tokenizer, tokenizer_kwargs, device, window=window)
+        loader_kwargs.batch_size = find_batch_size([item[input_key] for item in sorted_dataset], model, tokenizer, tokenizer_kwargs, model.device, window=window)
     loader = DataLoader(sorted_dataset, **asdict(loader_kwargs), shuffle=False)
-    outputs = compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window=window, device=device, input_key=input_key)
+    outputs = compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window=window, input_key=input_key)
     outputs.update(dict(total_chars=total_chars, total_tokens=total_tokens))
     return outputs
 

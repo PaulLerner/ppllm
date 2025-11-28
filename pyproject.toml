@@ -1,6 +1,6 @@
 [project]
 name = "ppllm"
-version = "0.2.0"
+version = "0.2.1"
 description = "A Python Library to Compute LLM's Perplexity and Surprisal"
 readme = "README.md"
 requires-python = ">=3.10"
