@@ -182,7 +182,7 @@ def compute_ppl(dataset, model, tokenizer, tokenizer_kwargs: TokenizerKwargs = T
     if loader_kwargs.batch_size is None:
         loader_kwargs.batch_size = find_batch_size([item[input_key] for item in sorted_dataset], model, tokenizer, tokenizer_kwargs, model.device, window=window)
     loader = DataLoader(sorted_dataset, **asdict(loader_kwargs), shuffle=False)
-    outputs = compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window=window, input_key=input_key)
+    outputs = compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window=window, input_key=input_key, context_key=context_key)
     outputs.update(dict(total_chars=total_chars, total_tokens=total_tokens))
     return outputs
 
