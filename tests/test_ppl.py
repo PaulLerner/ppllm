@@ -45,7 +45,7 @@ class AbstractTestPpl:
         total_chars, total_tokens = count_tokens_chars(self.dataset, self.tokenizer)
         for item in self.dataset:
             item["context"] = ""
-        context_total_chars, context_total_tokens = count_tokens_chars(self.dataset, self.tokenizer)
+        context_total_chars, context_total_tokens = count_tokens_chars(self.dataset, self.tokenizer, context_key="context")
         self.assertAllEqual(total_chars, context_total_chars)
         self.assertAllEqual(total_tokens, context_total_tokens)
 
@@ -57,7 +57,7 @@ class AbstractTestPpl:
         for item in self.dataset:
             item["context"] = context
             item["text"] = context + item["text"]
-        context_total_chars, _ = count_tokens_chars(self.dataset, self.tokenizer)
+        context_total_chars, _ = count_tokens_chars(self.dataset, self.tokenizer, context_key="context")
         self.assertAllEqual(total_chars, context_total_chars)
     
     def test_compute_ppl(self):
@@ -69,7 +69,7 @@ class AbstractTestPpl:
         for item in self.dataset:
             item["context"] = context
             item["text"] = context + item["text"]
-        outputs = compute_ppl(self.dataset, self.model, self.tokenizer, loader_kwargs=LoaderKwargs(batch_size=len(self.dataset)))
+        outputs = compute_ppl(self.dataset, self.model, self.tokenizer, loader_kwargs=LoaderKwargs(batch_size=len(self.dataset)), context_key="context")
         self.assertAllTrue(outputs["all_losses"].reshape(len(self.dataset), -1)[:, :2]==0.)
 
 
