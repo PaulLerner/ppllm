@@ -13,7 +13,7 @@ from .utils import load_dataset, fix_tokenizer
 from .ppl import compute_ppl, compute_metrics, ModelKwargs, TokenizerKwargs, LoaderKwargs
 
 
-def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, srcs: List[str], tgts: List[str], window: int = None, input_key: str = "text", split: str = "test",
+def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, srcs: List[str], tgts: List[str], window: int = None, split: str = "test",
          tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), loader_kwargs: LoaderKwargs = LoaderKwargs(), template="{src_lang}: {src_text}\n{tgt_lang}:", chat: bool = False):
     """Compute the PPL and Surprisal of an LLM on a translation conditioned on the source text"""
     if chat:
@@ -41,7 +41,7 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, srcs: Lis
             for item in dataset:
                 item["context"] = template.format(src_lang=src_name, src_text=item[src], tgt_lang=tgt_name)
                 item["text"] = f'{item["context"]} {item[tgt]}'
-            outputs = compute_ppl(dataset, model, tokenizer, tokenizer_kwargs=tokenizer_kwargs, loader_kwargs=loader_kwargs, window=window)
+            outputs = compute_ppl(dataset, model, tokenizer, tokenizer_kwargs=tokenizer_kwargs, loader_kwargs=loader_kwargs, window=window, input_key="text", context_key="context")
             metrics = compute_metrics(**{k: outputs[k] for k in ["total_losses", "total_chars", "total_tokens"]})
             metrics.update({k: v for k, v in outputs.items() if isinstance(v, float)})
             metrics.update(dict(src=src, tgt=tgt, window=window, template=template, batch_size=loader_kwargs.batch_size, software=Path(__file__).stem))
