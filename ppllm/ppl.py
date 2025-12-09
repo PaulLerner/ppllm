@@ -64,7 +64,7 @@ class TokenizerKwargs:
 
 
 @torch.no_grad()
-def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int = None, input_key: str = "text"):
+def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int = None, input_key: str = "text", context_key: str = None):
     start_time = time.time()
     device = model.device
     if window is not None:
@@ -77,9 +77,9 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
         # entire text including context + what we want to compute surprisal of
         input_ids = tokenizer(batch[input_key], **tokenizer_kwargs)["input_ids"].to(device)
         # context should not be accounted in surprisal
-        if "context" in batch:
+        if context_key is not None:
             labels = input_ids.clone()
-            context_lengths = [len(input_id) for input_id in tokenizer(batch["context"])["input_ids"]]
+            context_lengths = [len(input_id) for input_id in tokenizer(batch[context_key])["input_ids"]]
             for i, length in enumerate(context_lengths):
                 labels[i, :length] = loss_fct.ignore_index
         else:
@@ -144,14 +144,14 @@ def compute_metrics(total_losses, total_chars, total_tokens):
     return metrics
 
 
-def count_tokens_chars(dataset, tokenizer, input_key: str = "text"):
+def count_tokens_chars(dataset, tokenizer, input_key: str = "text", context_key: str = None):
     discount_bos = tokenizer.bos_token is None
     if discount_bos:
         i2token = {i: token for token, i in tokenizer.vocab.items()}
     texts = [item[input_key] for item in dataset]
     all_tokens = tokenizer(texts, add_special_tokens=False)["input_ids"]
-    if "context" in dataset[0]:
-        contexts = [item["context"] for item in dataset]
+    if context_key is not None:
+        contexts = [item[context_key] for item in dataset]
         all_contexts = tokenizer(contexts, add_special_tokens=False)["input_ids"]
     else:
         contexts = [""]*len(dataset)
@@ -171,11 +171,14 @@ def count_tokens_chars(dataset, tokenizer, input_key: str = "text"):
 
 
 def compute_ppl(dataset, model, tokenizer, tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), 
-                loader_kwargs: LoaderKwargs = LoaderKwargs(), window: int = None, input_key: str = "text"):
+                loader_kwargs: LoaderKwargs = LoaderKwargs(), window: int = None, input_key: str = "text", context_key: str = None):
     tokenizer_kwargs = asdict(tokenizer_kwargs)
-    total_chars, total_tokens = count_tokens_chars(dataset, tokenizer, input_key=input_key)
+    total_chars, total_tokens = count_tokens_chars(dataset, tokenizer, input_key=input_key, context_key=context_key)
     indices = total_tokens.argsort(descending=True)
-    sorted_dataset = [dataset[i] for i in indices]
+    keys = [input_key]
+    if context_key is not None:
+        keys.append(context_key)
+    sorted_dataset = [{k: dataset[i][k] for k in keys} for i in indices]
     if loader_kwargs.batch_size is None:
         loader_kwargs.batch_size = find_batch_size([item[input_key] for item in sorted_dataset], model, tokenizer, tokenizer_kwargs, model.device, window=window)
     loader = DataLoader(sorted_dataset, **asdict(loader_kwargs), shuffle=False)
@@ -184,7 +187,7 @@ def compute_ppl(dataset, model, tokenizer, tokenizer_kwargs: TokenizerKwargs = T
     return outputs
 
 
-def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: int = None, input_key: str = "text", split: str = "test",
+def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: int = None, input_key: str = "text", context_key: str = None, split: str = "test",
          tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), loader_kwargs: LoaderKwargs = LoaderKwargs()):
     """Compute the PPL and Surprisal of an LLM"""
     assert window is None or window%2 == 0, f"window must be dividible by 2, got {window}"
@@ -199,7 +202,7 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
     fix_tokenizer(tokenizer)
     model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs))
     dataset = load_dataset(data_path, split=split)
-    outputs = compute_ppl(dataset, model, tokenizer, tokenizer_kwargs=tokenizer_kwargs, loader_kwargs=loader_kwargs, window=window, input_key=input_key)
+    outputs = compute_ppl(dataset, model, tokenizer, tokenizer_kwargs=tokenizer_kwargs, loader_kwargs=loader_kwargs, window=window, input_key=input_key, context_key=context_key)
     metrics = compute_metrics(**{k: outputs[k] for k in ["total_losses", "total_chars", "total_tokens"]})
     metrics.update({k: v for k, v in outputs.items() if isinstance(v, float)})
     print(metrics)
