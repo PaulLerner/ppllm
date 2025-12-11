@@ -26,6 +26,8 @@ def find_batch_size(texts, model, tokenizer, tokenizer_kwargs, device, window: i
             input_ids = input_ids[:, :window]
         try:
             _ = model(input_ids, return_dict=True).logits
+            # 2nd forward pass as the 1st one may have put stuff in cache
+            _ = model(input_ids, return_dict=True).logits
         except Exception as e:
             if ok_batch_size is None:
                 raise ValueError(f"Got Exception {e=} (likely OOM) with {batch_size=}, try using a smaller {window=}")
