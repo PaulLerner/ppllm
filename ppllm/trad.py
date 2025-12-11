@@ -29,6 +29,7 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, srcs: Lis
     fix_tokenizer(tokenizer)
     model = AutoModelForCausalLM.from_pretrained(**asdict(model_kwargs))
     dataset = load_dataset(data_path, split=split)
+    batch_size = loader_kwargs.batch_size
     for src in srcs:
         src_name = Lang(src).name
         (output_dir/src).mkdir(exist_ok=True)
@@ -51,6 +52,8 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, srcs: Lis
             for k, v in outputs.items():
                 if isinstance(v, torch.Tensor):
                     torch.save(v, lp_output_dir/f"{k}.bin")
+            # this will get overwritten in find_batch_size
+            loader_kwargs.batch_size = batch_size
 
 
 if __name__ == "__main__":
