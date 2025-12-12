@@ -61,7 +61,7 @@ class AbstractTestPpl:
         self.assertAllEqual(total_chars, context_total_chars)
     
     def test_compute_ppl(self):
-        outputs = compute_ppl(self.dataset, self.model, self.tokenizer, loader_kwargs=LoaderKwargs(batch_size=len(self.dataset)))
+        outputs = compute_ppl(self.dataset, self.model, self.tokenizer, loader_kwargs=LoaderKwargs(batch_size=len(self.dataset)), chat=self.chat)
         self.assertAllClose(outputs["total_losses"], self.true_total_losses)
 
     def test_compute_ppl_context(self):
@@ -69,7 +69,7 @@ class AbstractTestPpl:
         for item in self.dataset:
             item["context"] = context
             item["text"] = context + item["text"]
-        outputs = compute_ppl(self.dataset, self.model, self.tokenizer, loader_kwargs=LoaderKwargs(batch_size=len(self.dataset)), context_key="context")
+        outputs = compute_ppl(self.dataset, self.model, self.tokenizer, loader_kwargs=LoaderKwargs(batch_size=len(self.dataset)), context_key="context", chat=self.chat)
         self.assertAllTrue(outputs["all_losses"].reshape(len(self.dataset), -1)[:, :2]==0.)
 
 
@@ -83,6 +83,20 @@ class TestQwen3_0_6B_Base(AbstractTestPpl, TestBase):
         cls.true_total_tokens = torch.tensor([3, 3, 8, 9])
         cls.true_total_losses = torch.tensor([10.7958, 14.0682, 51.1817, 46.1391])
         fix_tokenizer(cls.tokenizer)
+        cls.chat = False
+
+
+class TestQwen3_0_6B(AbstractTestPpl, TestBase):
+    @classmethod
+    def setUpClass(cls):
+        MODEL_NAME = "Qwen/Qwen3-0.6B"
+        cls.model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+        cls.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        cls.true_total_chars = torch.tensor([13, 12, 42, 44])
+        cls.true_total_tokens = torch.tensor([3, 3, 8, 9])
+        cls.true_total_losses = torch.tensor([41.5382, 54.7515, 82.8145, 81.3151])
+        fix_tokenizer(cls.tokenizer)
+        cls.chat = True
 
 
 class TestCroissantLLMBase(AbstractTestPpl, TestBase):
@@ -95,6 +109,7 @@ class TestCroissantLLMBase(AbstractTestPpl, TestBase):
         cls.true_total_tokens = torch.tensor([ 4,  4,  9, 13])
         cls.true_total_losses = torch.tensor([14.2056, 22.8031, 54.3119, 42.1241])
         fix_tokenizer(cls.tokenizer)
+        cls.chat = False
         
 
 if __name__ == '__main__':
