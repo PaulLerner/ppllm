@@ -16,8 +16,6 @@ from .ppl import compute_ppl, compute_metrics, ModelKwargs, TokenizerKwargs, Loa
 def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, srcs: List[str], tgts: List[str], window: int = None, split: str = "test",
          tokenizer_kwargs: TokenizerKwargs = TokenizerKwargs(), loader_kwargs: LoaderKwargs = LoaderKwargs(), template="{src_lang}: {src_text}\n{tgt_lang}:", chat: bool = False):
     """Compute the PPL and Surprisal of an LLM on a translation conditioned on the source text"""
-    if chat:
-        raise NotImplementedError(f"{chat=}")
     assert window is None or window%2 == 0, f"window must be dividible by 2, got {window}"
     output_dir.mkdir(exist_ok=True, parents=True)
     tokenizer = AutoTokenizer.from_pretrained(
@@ -40,8 +38,19 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, srcs: Lis
             lp_output_dir = output_dir/src/tgt
             lp_output_dir.mkdir(exist_ok=True)
             for item in dataset:
-                item["context"] = template.format(src_lang=src_name, src_text=item[src], tgt_lang=tgt_name)
-                item["text"] = f'{item["context"]} {item[tgt]}'
+                if chat:
+                    item["text"] = tokenizer.apply_chat_template(
+                            [
+                                {"role": "user", "content": template.format(src_lang=src_name, src_text=item[src], tgt_lang=tgt_name)},
+                                {"role": "assistant", "content": item[tgt]}
+                            ],
+                            tokenize=False, 
+                            continue_final_message=True
+                        )
+                    item["context"] = item["text"][:-len(item[tgt])]
+                else:
+                    item["context"] = template.format(src_lang=src_name, src_text=item[src], tgt_lang=tgt_name)
+                    item["text"] = f'{item["context"]} {item[tgt]}'
             outputs = compute_ppl(dataset, model, tokenizer, tokenizer_kwargs=tokenizer_kwargs, loader_kwargs=loader_kwargs, window=window, input_key="text", context_key="context")
             metrics = compute_metrics(**{k: outputs[k] for k in ["total_losses", "total_chars", "total_tokens"]})
             metrics.update({k: v for k, v in outputs.items() if isinstance(v, float)})
