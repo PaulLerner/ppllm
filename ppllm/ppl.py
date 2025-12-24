@@ -88,7 +88,7 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
         batch_size, seq_len = input_ids.shape
         if window is None:
             logits = model(input_ids, return_dict=True).logits
-            logits = logits[:, :-1].contiguous().view(-1, model.config.vocab_size)
+            logits = logits[:, :-1].contiguous().view(batch_size * (seq_len-1), -1)
             labels = labels[:, 1:].contiguous().view(-1)
             losses = loss_fct(logits, labels).view(batch_size, seq_len-1)
             total_losses.append(losses.sum(1).cpu())
@@ -101,10 +101,10 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
                 window_ids = input_ids[:, j: j+window]
                 logits = model(window_ids, return_dict=True).logits
                 if j > 0:
-                    logits = logits[:, stride:-1].contiguous().view(-1, model.config.vocab_size)
+                    logits = logits[:, stride:-1].contiguous().view(batch_size * (stride-1), -1)
                     label_window_ids = labels[:, j+stride+1: j+window].contiguous().view(-1)
                 else:
-                    logits = logits[:, :-1].contiguous().view(-1, model.config.vocab_size)
+                    logits = logits[:, :-1].contiguous().view(batch_size * (window-1), -1)
                     label_window_ids = labels[:, j+1: j+window].contiguous().view(-1)
                 losses = loss_fct(logits, label_window_ids).view(batch_size, -1)
                 all_indices.append(indices[i: i+batch_size].repeat_interleave(losses.shape[1]))
