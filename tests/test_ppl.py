@@ -85,6 +85,18 @@ class TestQwen3_0_6B_Base(AbstractTestPpl, TestBase):
         fix_tokenizer(cls.tokenizer)
 
 
+class TestGemma_3_4b_it(AbstractTestPpl, TestBase):
+    @classmethod
+    def setUpClass(cls):
+        MODEL_NAME = "google/gemma-3-4b-it"
+        cls.model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, token=True)
+        cls.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        cls.true_total_chars = torch.tensor([14, 13, 43, 45])
+        cls.true_total_tokens = torch.tensor([ 4,  4, 10, 10])
+        cls.true_total_losses = torch.tensor([28.1614, 21.5981, 80.7367, 47.4722])
+        fix_tokenizer(cls.tokenizer)
+
+
 class TestCroissantLLMBase(AbstractTestPpl, TestBase):
     @classmethod
     def setUpClass(cls):
