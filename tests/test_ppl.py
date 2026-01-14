@@ -18,13 +18,14 @@ def format_msg(msg):
 
 class TestBase(unittest.TestCase):
     def assertAllTrue(self, tensor, msg=None):
-        return self.assertTrue(tensor.all(), msg=f"{tensor} is not all true{format_msg(msg)}")
+        self.assertTrue(tensor.all(), msg=f"{tensor} is not all true{format_msg(msg)}")
     
     def assertAllEqual(self, a, b, msg=None):
-        return self.assertAllTrue(a==b, msg=f"{a} and {b} are not all equal{format_msg(msg)}")
+        self.assertEqual(len(a), len(b), msg=f"{len(a)=} and {len(b)=} are not all equal{format_msg(msg)}")
+        self.assertAllTrue(a==b, msg=f"{a} and {b} are not all equal{format_msg(msg)}")
 
     def assertAllClose(self, a, b, msg=None):
-        return self.assertAllTrue(torch.isclose(a, b, atol=1e-3), msg=f"{a} and {b} are not all close{format_msg(msg)}")
+        self.assertAllTrue(torch.isclose(a, b, atol=1e-3), msg=f"{a} and {b} are not all close{format_msg(msg)}")
 
 
 class AbstractTestPpl:
@@ -33,7 +34,8 @@ class AbstractTestPpl:
             {"text": "I have a dream"},
             {"text": "I has a dream"},
             {"text": "I'm out for dead presidents to represent me"},
-            {"text": "A language is a dialect with an army and navy"}
+            {"text": "A language is a dialect with an army and navy"},
+            {"text": "Всички хора се раждат свободни и равни по достойнство и права. Те са надарени с разум и съвест и следва да се отнасят помежду си в дух на братство"}
         ]
 
     def test_count_tokens_chars(self):
@@ -79,9 +81,21 @@ class TestQwen3_0_6B_Base(AbstractTestPpl, TestBase):
         MODEL_NAME = "Qwen/Qwen3-0.6B-Base"
         cls.model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
         cls.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        cls.true_total_chars = torch.tensor([13, 12, 42, 44])
-        cls.true_total_tokens = torch.tensor([3, 3, 8, 9])
-        cls.true_total_losses = torch.tensor([10.7958, 14.0682, 51.1817, 46.1391])
+        cls.true_total_chars = torch.tensor([13, 12, 42, 44, 144])
+        cls.true_total_tokens = torch.tensor([3, 3, 8, 9, 57])
+        cls.true_total_losses = torch.tensor([10.7958, 14.0682, 51.1817, 46.1391, 157.4824])
+        fix_tokenizer(cls.tokenizer)
+
+
+class TestGemma_3_4b_it(AbstractTestPpl, TestBase):
+    @classmethod
+    def setUpClass(cls):
+        MODEL_NAME = "google/gemma-3-4b-it"
+        cls.model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, token=True)
+        cls.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        cls.true_total_chars = torch.tensor([14, 13, 43, 45, 146])
+        cls.true_total_tokens = torch.tensor([ 4,  4, 10, 10, 47])
+        cls.true_total_losses = torch.tensor([28.1614, 21.5981, 80.7367, 47.4722, 74.5815])
         fix_tokenizer(cls.tokenizer)
 
 
@@ -91,9 +105,9 @@ class TestCroissantLLMBase(AbstractTestPpl, TestBase):
         MODEL_NAME = "croissantllm/CroissantLLMBase"
         cls.model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
         cls.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        cls.true_total_chars = torch.tensor([14, 13, 43, 45])
-        cls.true_total_tokens = torch.tensor([ 4,  4,  9, 13])
-        cls.true_total_losses = torch.tensor([14.2056, 22.8031, 54.3119, 42.1241])
+        cls.true_total_chars = torch.tensor([14, 13, 43, 45, 146])
+        cls.true_total_tokens = torch.tensor([ 4,  4,  9, 13, 79])
+        cls.true_total_losses = torch.tensor([14.2056, 22.8031, 54.3119, 42.1241, 167.0425])
         fix_tokenizer(cls.tokenizer)
         
 
