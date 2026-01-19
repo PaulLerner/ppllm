@@ -33,7 +33,7 @@ class ModelKwargs:
     use_safetensors: bool = None
     resume_download: bool = False
     output_loading_info: bool = False
-    dtype: str = "float16"
+    dtype: str = "auto"
     load_in_8bit: bool = False
     load_in_4bit: bool = False
     attn_implementation: str = None
@@ -86,6 +86,11 @@ def compute_nll(loader, indices, model, tokenizer, tokenizer_kwargs, window: int
             labels = input_ids
 
         batch_size, seq_len = input_ids.shape
+        if seq_len < 2:
+            warnings.warn(f"Found empty or single-token texts, will assign a loss of 0")
+            total_losses.append(torch.zeros(batch_size))
+            continue
+
         if window is None:
             logits = model(input_ids, return_dict=True).logits
             logits = logits[:, :-1].contiguous().view(batch_size * (seq_len-1), -1)
