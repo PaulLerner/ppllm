@@ -33,7 +33,7 @@ class ModelKwargs:
     use_safetensors: bool = None
     resume_download: bool = False
     output_loading_info: bool = False
-    dtype: str = "float16"
+    dtype: str = "auto"
     load_in_8bit: bool = False
     load_in_4bit: bool = False
     attn_implementation: str = None
