@@ -199,7 +199,6 @@ def main(output_dir: Path, data_path: Path, model_kwargs: ModelKwargs, window: i
     output_dir.mkdir(exist_ok=True, parents=True)
     tokenizer = AutoTokenizer.from_pretrained(
         model_kwargs.pretrained_model_name_or_path, 
-        add_prefix_space=False, 
         # FIXME option for EOS
         add_eos_token=False, 
         trust_remote_code=model_kwargs.trust_remote_code
